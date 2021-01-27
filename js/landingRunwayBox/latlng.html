@@ -1,0 +1,577 @@
+<!--
+// map polygon
+https://jsfiddle.net/vouz83qt/ 
+
+
+
+-->
+<html>
+<body>
+<label for="avatar" style="color: red;">Choose file to process:</label><br/>
+<form id="inputfile">
+<input type='file' accept='application/txt'><br/>
+</form>
+
+
+<form name="ortho-dist" id="ortho-dist">
+        <fieldset><legend>Great-circle distance between two points</legend>
+            <table class="inputs">
+                <tbody><tr>
+                    <td>Point 1:</td>
+                    <td>
+                        <input type="text" name="lat1" class="lat1" value="13.671278" placeholder="Lat 1 (°N/S)" title="Lat 1 (°N/S)" required=""> ,
+                        <input type="text" name="lon1" class="lon1" value="100.734664" placeholder="Lon 1 (°E/W)" title="Lon 1 (°E/W)" required="">
+                    </td>
+                </tr>
+                <tr>
+                    <td>Point 2:</td>
+                    <td>
+                        <input type="text" name="lat2" class="lat2" value="13.703669" placeholder="Lat 2 (°N/S)" title="Lat 2 (°N/S)" required=""> ,
+                        <input type="text" name="lon2" class="lon2" value="100.743178" placeholder="Lon 2 (°E/W)" title="Lon 2 (°E/W)" required="">
+                    </td>
+                </tr>
+            </tbody></table>
+            <table class="outputs">
+                <tbody><tr>
+                    <td>Distance:</td>
+                    <td>
+                        <output class="result-dist-m" title="Distance (in m)"></output> m or
+                        <output class="result-dist-ft" title="Distance (in ft)"></output> ft
+                    </td>
+                </tr>
+                <tr>
+                    <td>Initial bearing:</td>
+                    <td><output class="result-brng1" title="Initial bearing (azimuth) between points"></output></td>
+                </tr>
+                <tr>
+                    <td>Final bearing:</td>
+                    <td><output class="result-brng2" title="Final bearing (azimuth) between points"></output></td>
+                </tr>
+                <tr>
+                    <td>Midpoint:</td>
+                    <td><output class="result-midpt" title="Midpoint between points"></output></td>
+                </tr>
+            </tbody></table>
+        </fieldset>
+    </form>
+<form name="ortho-dest" id="ortho-dest">
+        <fieldset><legend>Destination point along great-circle given distance and bearing from start point</legend>
+            <table class="inputs">
+                <tbody><tr>
+                    <td>Start point:</td>
+                    <td>
+                        <input name="lat1" class="lat1" type="text" value="13.671278">,
+                        <input name="lon1" class="lon1" type="text" value="100.734664">
+                    </td>
+                </tr>
+                <tr>
+                    <td>Bearing:</td>
+                    <td><input type="text" name="brng" class="brng" value="285"></td>
+                </tr>
+                <tr>
+                    <td>Distance:</td>
+                    <td><input name="dist" class="dist" type="number" step="any" value="30"> m</td>
+                </tr>
+            </tbody></table>
+            <table class="outputs">
+                <tbody><tr>
+                    <td>Destination point:</td>
+                    <td><output class="result-point" title="Destination point"></output></td>
+                </tr>
+                <tr>
+                    <td>Final bearing:</td>
+                    <td><output class="result-brng" title="Final bearing (azimuth) arriving at point 2"></output></td>
+                </tr>
+            </tbody></table>
+        </fieldset>
+    </form>
+
+	<fieldset><legend>Landing runway Area Finder</legend>
+		<form id="airportname">
+			<label for="icaoname" style="color: red;">ICAO airport</label>
+			<input type="text" class="icaoname" value="" maxlength="4"><input type="text" class="details" value="XXX" disabled><br/><br/>
+			<fieldset><legend>select 2 opposite runway</legend>
+				<div id="abcxyz"></div>
+			</fieldset>
+
+			
+		</form>
+		<form id="inputtext">
+			<label>1st RWY</label>
+			<input type="text" class="runway1input" value="" style="width: 405px;" disabled>
+			<input type="text" class="runway1heading" value="" style="width: 100px;" disabled>
+			<input type="text" class="runway1bearingto2" value="" style="width: 100px;" disabled>
+			<input type="text" class="runway1diff" value="" style="width: 100px;" disabled>
+			<br/>
+			<label>2nd RWY</label>
+			<input type="text" class="runway2input" value="" style="width: 405px;" disabled>
+			<input type="text" class="runway2heading" value="" style="width: 100px;" disabled>
+			<input type="text" class="runway2bearingto1" value="" style="width: 100px;" disabled>
+			<input type="text" class="runway2diff" value="" style="width: 100px;" disabled>
+			<br/>
+
+			<label>RWY Box</label>
+			<input type="text" class="runway1box" value="" style="width: 703px;"><br/>
+
+			<label>RWY Box</label>
+			<input type="text" class="runway2box" value="" style="width: 703px;"><br/>
+			<input type="hidden" class="runway1name" value="01R">
+			<input type="hidden" class="runway1lat" value="13.656697">
+			<input type="hidden" class="runway1lng" value="100.751831">
+			<input type="hidden" class="runway1width" value="197">
+			<input type="hidden" class="runway2name" value="19L">
+			<input type="hidden" class="runway2lat" value="13.691714">
+			<input type="hidden" class="runway2lng" value="100.761033">
+			<input type="hidden" class="runway2width" value="197">
+		</form>
+		<p>draw polygon at <a href="https://jsfiddle.net/vouz83qt/">https://jsfiddle.net/vouz83qt/</a></p>
+	</fieldset>
+
+
+
+<script src="https://d3js.org/d3.v6.min.js"></script>
+<script type="module">
+var _global = typeof window === 'object' && window.window === window
+  ? window : typeof self === 'object' && self.self === self
+  ? self : typeof global === 'object' && global.global === global
+  ? global
+  : this
+
+function bom (blob, opts) {
+  if (typeof opts === 'undefined') opts = { autoBom: false }
+  else if (typeof opts !== 'object') {
+    console.warn('Deprecated: Expected third argument to be a object')
+    opts = { autoBom: !opts }
+  }
+
+  // prepend BOM for UTF-8 XML and text/* types (including HTML)
+  // note: your browser will automatically convert UTF-16 U+FEFF to EF BB BF
+  if (opts.autoBom && /^\s*(?:text\/\S*|application\/xml|\S*\/\S*\+xml)\s*;.*charset\s*=\s*utf-8/i.test(blob.type)) {
+    return new Blob([String.fromCharCode(0xFEFF), blob], { type: blob.type })
+  }
+  return blob
+}
+
+function download (url, name, opts) {
+  var xhr = new XMLHttpRequest()
+  xhr.open('GET', url)
+  xhr.responseType = 'blob'
+  xhr.onload = function () {
+    saveAs(xhr.response, name, opts)
+  }
+  xhr.onerror = function () {
+    console.error('could not download file')
+  }
+  xhr.send()
+}
+
+function corsEnabled (url) {
+  var xhr = new XMLHttpRequest()
+  // use sync to avoid popup blocker
+  xhr.open('HEAD', url, false)
+  try {
+    xhr.send()
+  } catch (e) {}
+  return xhr.status >= 200 && xhr.status <= 299
+}
+
+// `a.click()` doesn't work for all browsers (#465)
+function click (node) {
+  try {
+    node.dispatchEvent(new MouseEvent('click'))
+  } catch (e) {
+    var evt = document.createEvent('MouseEvents')
+    evt.initMouseEvent('click', true, true, window, 0, 0, 0, 80,
+                          20, false, false, false, false, 0, null)
+    node.dispatchEvent(evt)
+  }
+}
+
+// Detect WebView inside a native macOS app by ruling out all browsers
+// We just need to check for 'Safari' because all other browsers (besides Firefox) include that too
+// https://www.whatismybrowser.com/guides/the-latest-user-agent/macos
+var isMacOSWebView = _global.navigator && /Macintosh/.test(navigator.userAgent) && /AppleWebKit/.test(navigator.userAgent) && !/Safari/.test(navigator.userAgent)
+
+var saveAs = _global.saveAs || (
+  // probably in some web worker
+  (typeof window !== 'object' || window !== _global)
+    ? function saveAs () { /* noop */ }
+
+  // Use download attribute first if possible (#193 Lumia mobile) unless this is a macOS WebView
+  : ('download' in HTMLAnchorElement.prototype && !isMacOSWebView)
+  ? function saveAs (blob, name, opts) {
+    var URL = _global.URL || _global.webkitURL
+    var a = document.createElement('a')
+    name = name || blob.name || 'download'
+
+    a.download = name
+    a.rel = 'noopener' // tabnabbing
+
+    // TODO: detect chrome extensions & packaged apps
+    // a.target = '_blank'
+
+    if (typeof blob === 'string') {
+      // Support regular links
+      a.href = blob
+      if (a.origin !== location.origin) {
+        corsEnabled(a.href)
+          ? download(blob, name, opts)
+          : click(a, a.target = '_blank')
+      } else {
+        click(a)
+      }
+    } else {
+      // Support blobs
+      a.href = URL.createObjectURL(blob)
+      setTimeout(function () { URL.revokeObjectURL(a.href) }, 4E4) // 40s
+      setTimeout(function () { click(a) }, 0)
+    }
+  }
+
+  // Use msSaveOrOpenBlob as a second approach
+  : 'msSaveOrOpenBlob' in navigator
+  ? function saveAs (blob, name, opts) {
+    name = name || blob.name || 'download'
+
+    if (typeof blob === 'string') {
+      if (corsEnabled(blob)) {
+        download(blob, name, opts)
+      } else {
+        var a = document.createElement('a')
+        a.href = blob
+        a.target = '_blank'
+        setTimeout(function () { click(a) })
+      }
+    } else {
+      navigator.msSaveOrOpenBlob(bom(blob, opts), name)
+    }
+  }
+
+  // Fallback to using FileReader and a popup
+  : function saveAs (blob, name, opts, popup) {
+    // Open a popup immediately do go around popup blocker
+    // Mostly only available on user interaction and the fileReader is async so...
+    popup = popup || open('', '_blank')
+    if (popup) {
+      popup.document.title =
+      popup.document.body.innerText = 'downloading...'
+    }
+
+    if (typeof blob === 'string') return download(blob, name, opts)
+
+    var force = blob.type === 'application/octet-stream'
+    var isSafari = /constructor/i.test(_global.HTMLElement) || _global.safari
+    var isChromeIOS = /CriOS\/[\d]+/.test(navigator.userAgent)
+
+    if ((isChromeIOS || (force && isSafari) || isMacOSWebView) && typeof FileReader !== 'undefined') {
+      // Safari doesn't allow downloading of blob URLs
+      var reader = new FileReader()
+      reader.onloadend = function () {
+        var url = reader.result
+        url = isChromeIOS ? url : url.replace(/^data:[^;]*;/, 'data:attachment/file;')
+        if (popup) popup.location.href = url
+        else location = url
+        popup = null // reverse-tabnabbing #460
+      }
+      reader.readAsDataURL(blob)
+    } else {
+      var URL = _global.URL || _global.webkitURL
+      var url = URL.createObjectURL(blob)
+      if (popup) popup.location = url
+      else location.href = url
+      popup = null // reverse-tabnabbing #460
+      setTimeout(function () { URL.revokeObjectURL(url) }, 4E4) // 40s
+    }
+  }
+)
+
+_global.saveAs = saveAs.saveAs = saveAs
+
+if (typeof module !== 'undefined') {
+  module.exports = saveAs;
+}
+
+import LatLon, { Dms } from 'https://cdn.jsdelivr.net/npm/geodesy@2/latlon-spherical.js';
+let degFmt = 'd';
+_global.airportsData = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+	document.querySelectorAll('#ortho-dist input').forEach(function(el) {
+		el.onchange = function() {
+			const lat1 = Dms.parse(document.querySelector('#ortho-dist .lat1').value);
+			const lon1 = Dms.parse(document.querySelector('#ortho-dist .lon1').value);
+			const lat2 = Dms.parse(document.querySelector('#ortho-dist .lat2').value);
+			const lon2 = Dms.parse(document.querySelector('#ortho-dist .lon2').value);
+
+			// calculate distance, bearing, mid-point
+			const p1 = new LatLon(lat1, lon1);
+			const p2 = new LatLon(lat2, lon2);
+			const dist = p1.distanceTo(p2);
+			const brng1 = p1.initialBearingTo(p2);
+			const brng2 = p1.finalBearingTo(p2);
+			const pMid = p1.midpointTo(p2);
+			// display results
+			const d = (dist).toPrecision(6); // in km rounded to 4 significant figures
+			document.querySelector('#ortho-dist .result-dist-m').textContent = d > 1 ? Number(d) : d; // avoid exponential notation
+			const dft = (d*3.2808399).toPrecision(6);
+			document.querySelector('#ortho-dist .result-dist-ft').textContent = dft > 1 ? Number(dft) : dft; // avoid exponential notation
+			document.querySelector('#ortho-dist .result-brng1').textContent = Dms.toBrng(brng1, degFmt);
+			document.querySelector('#ortho-dist .result-brng2').textContent = Dms.toBrng(brng2, degFmt);
+			document.querySelector('#ortho-dist .result-midpt').textContent = pMid.toString(degFmt,6);
+
+		};
+	});
+	document.querySelector('#ortho-dist .lat1').onchange(); // trigger initial calculation
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('#ortho-dest input').forEach(function(el) {
+        el.onchange = function() {
+            const lat1 = Dms.parse(document.querySelector('#ortho-dest .lat1').value);
+            const lon1 = Dms.parse(document.querySelector('#ortho-dest .lon1').value);
+            const dist = document.querySelector('#ortho-dest .dist').value;
+            const brng = Dms.parse(document.querySelector('#ortho-dest .brng').value);
+
+            // calculate destination point, final bearing
+            const p1 = new LatLon(lat1, lon1);
+            const p2 = p1.destinationPoint(dist, brng);
+            const brngFinal = p1.finalBearingTo(p2);
+
+            // display results
+            document.querySelector('#ortho-dest .result-point').textContent = p2.toString(degFmt,6);
+            document.querySelector('#ortho-dest .result-brng').textContent = Dms.toBrng(brngFinal, degFmt);
+
+        };
+    });
+    document.querySelector('#ortho-dest .lat1').onchange(); // trigger initial calculation
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('#inputfile input').forEach(function(el) {
+        el.onchange = function(event) {
+					var input = event.target;
+					var reader = new FileReader();
+					reader.onload = function(e){
+						processtxt(e.target.result);
+					};
+					reader.readAsText(input.files[0]);
+        };
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('#airportname input').forEach(function(el) {
+        el.onchange = function(event) {
+					const inputairportname = document.querySelector('#airportname .icaoname').value.toUpperCase();
+					document.querySelector('#airportname .icaoname').value = inputairportname;
+					if(!isNaN(_global.airportsData)){alert("load airport details first");return 0;}
+					let selectedAirportDetails = _global.airportsData.get(inputairportname);
+					if(d3.select("#runwayselector").empty()){
+					}else{
+						d3.select("#runwayselector").remove();
+					}
+					var runwayselector = d3.select("#abcxyz").append("div").attr("id", "runwayselector");
+					runwayselector.append("p").text(selectedAirportDetails.airport.icao+" : "+selectedAirportDetails.airport.name+" (total runways : "+selectedAirportDetails.runways.length+")")
+					var table = d3.select("#runwayselector").append("table");
+					var header = table.append("thead").append("tr");
+					    header
+                .selectAll("th")
+                .data(["1st", "name", "lat", "long", "width", "2nd"])
+                .enter()
+                .append("th")
+                .text(function(d) { return d; });
+					var tablebody = table.append("tbody");
+					var row;
+					selectedAirportDetails.runways.forEach((item,index)=>{
+						console.log(item);
+						row = tablebody
+										.append("tr");
+						row.append("td").append("input")
+							.attr("type", "button")
+							.attr("value", "use")
+							.on("click", function(){
+document.querySelector('#inputtext .runway1name').value = item.name
+document.querySelector('#inputtext .runway1lat').value = item.lat
+document.querySelector('#inputtext .runway1lng').value = item.lng
+document.querySelector('#inputtext .runway1width').value = item.width
+document.querySelector('#inputtext .runway1input').value = item.name+","+item.lat+","+item.lng+","+item.width
+document.querySelector('#inputtext .runway1heading').value = item.heading
+document.querySelector('#inputtext .runway1input').onchange();
+
+							});
+						row.append("td").append("span")
+							.text(item.name);
+						row.append("td").append("span")
+							.text(item.lat);
+						row.append("td").append("span")
+							.text(item.lng);
+						row.append("td").append("span")
+							.text(item.width);
+						row.append("td").append("input")
+							.attr("type", "button")
+							.attr("value", "use")
+							.on("click", function(){
+document.querySelector('#inputtext .runway2name').value = item.name
+document.querySelector('#inputtext .runway2lat').value = item.lat
+document.querySelector('#inputtext .runway2lng').value = item.lng
+document.querySelector('#inputtext .runway2width').value = item.width
+document.querySelector('#inputtext .runway2input').value = item.name+","+item.lat+","+item.lng+","+item.width
+document.querySelector('#inputtext .runway2heading').value = item.heading
+document.querySelector('#inputtext .runway2input').onchange();
+							});
+
+					})
+					console.log(selectedAirportDetails)
+
+
+
+					//document.querySelector('#airportname .details').value = "DETAILS";
+        };
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('#inputtext input').forEach(function(el) {
+        el.onchange = function(event) {
+	        var airporticao = document.querySelector('#airportname .icaoname').value;
+					var name1 = document.querySelector('#inputtext .runway1name').value;
+					var lat1 = document.querySelector('#inputtext .runway1lat').value;
+					var lng1 = document.querySelector('#inputtext .runway1lng').value;
+					var width1 = document.querySelector('#inputtext .runway1width').value;
+					var name2 = document.querySelector('#inputtext .runway2name').value;
+					var lat2 = document.querySelector('#inputtext .runway2lat').value;
+					var lng2 = document.querySelector('#inputtext .runway2lng').value;
+					var width2 = document.querySelector('#inputtext .runway2width').value;
+					// calculate variable
+					const p1 = new LatLon(lat1, lng1);
+					const p2 = new LatLon(lat2, lng2);
+					const pMid = p1.midpointTo(p2);
+					const brng1toMid = p1.initialBearingTo(pMid);
+					const brng2toMid = p2.initialBearingTo(pMid);
+					document.querySelector('#inputtext .runway1bearingto2').value = brng1toMid
+					document.querySelector('#inputtext .runway2bearingto1').value = brng2toMid
+					document.querySelector('#inputtext .runway1diff').value = Math.abs(brng1toMid-document.querySelector('#inputtext .runway1heading').value)<2?"ACCEPTED":"NOT ACCEPTED";
+					document.querySelector('#inputtext .runway2diff').value = Math.abs(brng2toMid-document.querySelector('#inputtext .runway2heading').value)<2?"ACCEPTED":"NOT ACCEPTED";
+					const brngMidto1 = pMid.initialBearingTo(p1);
+					const brngMidto2 = pMid.initialBearingTo(p2);
+					
+					// p1 brng1toMid+90 width/2
+					var p1p1 = p1.destinationPoint(width1/2, brng1toMid+90);
+					// p1 brng1toMid-90 width/2
+					var p1p2 = p1.destinationPoint(width1/2, brng1toMid-90);
+					// pMid brngMidto1+90 width/2
+					var p1p3 = pMid.destinationPoint(width1/2, brngMidto1+90);
+					// pMid brngMidto1-90 width/2
+					var p1p4 = pMid.destinationPoint(width1/2, brngMidto1-90);
+
+					// p2 brng2toMid+90 width/2
+					var p2p1 = p2.destinationPoint(width1/2, brng2toMid+90);
+					// p2 brng2toMid-90 width/2
+					var p2p2 = p2.destinationPoint(width1/2, brng2toMid-90);
+					// pMid brngMidto2+90 width/2
+					var p2p3 = pMid.destinationPoint(width1/2, brngMidto2+90);
+					// pMid brngMidto2-90 width/2
+					var p2p4 = pMid.destinationPoint(width1/2, brngMidto2-90);
+					var runway1box = airporticao+" "+name1+" {lat:"+p1p1.lat+",lng:"+p1p1.lng+"},"+
+													"{lat:"+p1p2.lat+",lng:"+p1p2.lng+"},"+
+													"{lat:"+p1p3.lat+",lng:"+p1p3.lng+"},"+
+													"{lat:"+p1p4.lat+",lng:"+p1p4.lng+"},";
+					var runway2box = airporticao+" "+name2+" {lat:"+p2p1.lat+",lng:"+p2p1.lng+"},"+
+													"{lat:"+p2p2.lat+",lng:"+p2p2.lng+"},"+
+													"{lat:"+p2p3.lat+",lng:"+p2p3.lng+"},"+
+													"{lat:"+p2p4.lat+",lng:"+p2p4.lng+"},";
+					if(document.querySelector('#inputtext .runway2diff').value == "ACCEPTED"){
+						document.querySelector('#inputtext .runway1box').value = runway1box;
+						document.querySelector('#inputtext .runway2box').value = runway2box;
+					}else{
+						document.querySelector('#inputtext .runway1box').value = "";
+						document.querySelector('#inputtext .runway2box').value = "";						
+					}
+        };
+    });
+});
+
+
+
+function processtxt(datas){
+	var content = "ICAO\tName\trunway\tp1\tp2\tp3\tp4\r\n";
+	var textByLine = datas.split(/\r?\n\r?\n/);
+	textByLine.shift();
+	var skeletons = [];
+	var airports = [];
+	textByLine.forEach((item,index1)=>{
+		let skeleton = {};
+		var runwaysdetails = item.split(/\r?\n/);
+		var airportdetails = runwaysdetails.shift();
+		var airportdetail = airportdetails.split(",");
+		skeleton.airport = {icao:airportdetail[1],name:airportdetail[2],lat:+airportdetail[3],lng:+airportdetail[4]}
+		// loop each runway
+		skeleton.runways = [];
+		runwaysdetails.forEach((runway,index2)=>{
+			//R,01L,15,12139,197,1,109.100,15,13.671278,100.734664,5,3.00,50,1,0
+			var details = runway.split(",");
+			let temp = {name:details[1],lat:+details[8],lng:+details[9],heading:+details[2],length:+details[3]*0.3048,width:+details[4]*0.3048};
+
+			if(isNaN(temp.lat) || isNaN(temp.lng)){
+				//console.log("isNaN",runwaysdetails)
+			}else{
+				// calculate 4 lat lng points
+				// calculate destination point, final bearing
+				const p0 = new LatLon(temp.lat, temp.lng);
+				const p1 = p0.destinationPoint(temp.width/2, temp.heading-90);
+				const p2 = p0.destinationPoint(temp.width/2, temp.heading+90);
+				const p3 = p1.destinationPoint(temp.length/2, temp.heading);
+				const p4 = p2.destinationPoint(temp.length/2, temp.heading);
+				//console.log(p0,p1);
+				// arrange clockwise
+				temp.box = {p1:p2,p2:p4,p3:p3,p4:p1};
+				/**/
+				//if(airportdetail[1] == "VTBS"){
+					//console.log(airportdetail[1]+"\t"+airportdetail[2]+"\t"+details[1]+"\t["+p1.lat+","+p1.lng+"]\t["+p2.lat+","+p2.lng+"]\t["+p3.lat+","+p3.lng+"]\t["+p4.lat+","+p4.lng+"]\n")
+				content += airportdetail[1]+"\t"+airportdetail[2]+"\t"+details[1]+"\t["+p2.lat+","+p2.lng+"]\t["+p4.lat+","+p4.lng+"]\t["+p3.lat+","+p3.lng+"]\t["+p1.lat+","+p1.lng+"]\r\n";
+				//}
+				
+				skeleton.runways.push(temp);
+			}
+		})
+		airports.push(skeleton);
+	})
+	var airportsmap = d3.index(airports, d => d.airport.icao);
+	_global.airportsData = airportsmap;
+	airportsmap.forEach((value,key,map)=>{
+		if(key=="VTBS"){
+			console.log("POPCORN",value);
+		}
+	})
+	var filename = "airport-runways-box.csv";
+	var blob = new Blob([content], {
+	 type: "text/plain;charset=utf-8"
+	});
+	//saveAs(blob, filename);
+
+}
+
+
+    // SAMPLE AIRPORT DATA
+    /*
+    A,icao code,name,lat,lng, AP elevation,transition alt, transition lvl, 
+    R, rwy label, heading, Length(ft), Width(ft), ILS?(bool), ILS freq, ILS track, lat, lng, elevation, GP(degree), Threshold Crossing Height, xxx, xxx
+
+    A,VTBS,SUVARNABHUMI INTL,13.685833,100.748889,5,11000,13000,13100,0
+    R,01L,15,12139,197,1,109.100,15,13.671278,100.734664,5,3.00,50,1,0
+    R,01R,15,13123,197,1,110.100,15,13.656697,100.751831,5,3.00,50,1,0
+    R,19L,195,13123,197,1,110.500,195,13.691714,100.761033,5,3.00,50,1,0
+    R,19R,195,12139,197,1,109.500,195,13.703669,100.743178,5,3.00,50,1,0
+    */
+
+</script>
+
+
+
+
+
+
+
+
+</body>
+</html>
