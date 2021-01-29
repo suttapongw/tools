@@ -1,0 +1,355 @@
+<!--
+API_KEY
+AIzaSyBIwzALxUPNbatRBj3Xi1Uhp0fFzwWNBkE
+AIzaSyDDdGEiCzvJYC2iS9ZvvZZWlASYyqUx_BM : retool2
+
+-->
+<html>
+  <head>
+    <script
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBIwzALxUPNbatRBj3Xi1Uhp0fFzwWNBkE&callback=initMap&libraries=geometry&v=weekly"
+      defer
+    ></script>
+    <style type="text/css">
+      /* Always set the map height explicitly to define the size of the div
+       * element that contains the map. */
+      #map {
+        height: 80%;
+      }
+    </style>
+    <script>
+      // This example creates a simple polygon representing the Bermuda Triangle.
+var polygon;
+var map;
+      function initMap() {
+        map = new google.maps.Map(document.getElementById("map"), {
+          zoom: 15,
+          center: {lat:13.685833, lng:100.748889},
+          mapTypeId: "satellite",
+					disableDefaultUI: true,
+        });
+      }
+    </script>
+  </head>
+<body>
+<label for="avatar" style="color: red;">Choose file to process:</label><br/>
+<form id="inputfile">
+<input type='file' accept='application/txt'><br/>
+</form>
+
+
+	<fieldset><legend>Landing runway Area Finder</legend>
+		<form id="airportname">
+			<label style="color: red;">[lat,lng]</label>
+			<input type="text" class="icaoname" value="" style="width: 258px;"><br/><br/>
+			<label>msg:</label>
+			<input type="text" id="msg" value="please load airport database" disabled style="width: 278px;">
+		</form>
+	</fieldset>
+<div id="map"></div>
+
+
+<script src="https://d3js.org/d3.v6.min.js"></script>
+<script type="module">
+var _global = typeof window === 'object' && window.window === window
+  ? window : typeof self === 'object' && self.self === self
+  ? self : typeof global === 'object' && global.global === global
+  ? global
+  : this
+
+function bom (blob, opts) {
+  if (typeof opts === 'undefined') opts = { autoBom: false }
+  else if (typeof opts !== 'object') {
+    console.warn('Deprecated: Expected third argument to be a object')
+    opts = { autoBom: !opts }
+  }
+
+  // prepend BOM for UTF-8 XML and text/* types (including HTML)
+  // note: your browser will automatically convert UTF-16 U+FEFF to EF BB BF
+  if (opts.autoBom && /^\s*(?:text\/\S*|application\/xml|\S*\/\S*\+xml)\s*;.*charset\s*=\s*utf-8/i.test(blob.type)) {
+    return new Blob([String.fromCharCode(0xFEFF), blob], { type: blob.type })
+  }
+  return blob
+}
+
+function download (url, name, opts) {
+  var xhr = new XMLHttpRequest()
+  xhr.open('GET', url)
+  xhr.responseType = 'blob'
+  xhr.onload = function () {
+    saveAs(xhr.response, name, opts)
+  }
+  xhr.onerror = function () {
+    console.error('could not download file')
+  }
+  xhr.send()
+}
+
+function corsEnabled (url) {
+  var xhr = new XMLHttpRequest()
+  // use sync to avoid popup blocker
+  xhr.open('HEAD', url, false)
+  try {
+    xhr.send()
+  } catch (e) {}
+  return xhr.status >= 200 && xhr.status <= 299
+}
+
+// `a.click()` doesn't work for all browsers (#465)
+function click (node) {
+  try {
+    node.dispatchEvent(new MouseEvent('click'))
+  } catch (e) {
+    var evt = document.createEvent('MouseEvents')
+    evt.initMouseEvent('click', true, true, window, 0, 0, 0, 80,
+                          20, false, false, false, false, 0, null)
+    node.dispatchEvent(evt)
+  }
+}
+
+// Detect WebView inside a native macOS app by ruling out all browsers
+// We just need to check for 'Safari' because all other browsers (besides Firefox) include that too
+// https://www.whatismybrowser.com/guides/the-latest-user-agent/macos
+var isMacOSWebView = _global.navigator && /Macintosh/.test(navigator.userAgent) && /AppleWebKit/.test(navigator.userAgent) && !/Safari/.test(navigator.userAgent)
+
+var saveAs = _global.saveAs || (
+  // probably in some web worker
+  (typeof window !== 'object' || window !== _global)
+    ? function saveAs () { /* noop */ }
+
+  // Use download attribute first if possible (#193 Lumia mobile) unless this is a macOS WebView
+  : ('download' in HTMLAnchorElement.prototype && !isMacOSWebView)
+  ? function saveAs (blob, name, opts) {
+    var URL = _global.URL || _global.webkitURL
+    var a = document.createElement('a')
+    name = name || blob.name || 'download'
+
+    a.download = name
+    a.rel = 'noopener' // tabnabbing
+
+    if (typeof blob === 'string') {
+      // Support regular links
+      a.href = blob
+      if (a.origin !== location.origin) {
+        corsEnabled(a.href)
+          ? download(blob, name, opts)
+          : click(a, a.target = '_blank')
+      } else {
+        click(a)
+      }
+    } else {
+      // Support blobs
+      a.href = URL.createObjectURL(blob)
+      setTimeout(function () { URL.revokeObjectURL(a.href) }, 4E4) // 40s
+      setTimeout(function () { click(a) }, 0)
+    }
+  }
+
+  // Use msSaveOrOpenBlob as a second approach
+  : 'msSaveOrOpenBlob' in navigator
+  ? function saveAs (blob, name, opts) {
+    name = name || blob.name || 'download'
+
+    if (typeof blob === 'string') {
+      if (corsEnabled(blob)) {
+        download(blob, name, opts)
+      } else {
+        var a = document.createElement('a')
+        a.href = blob
+        a.target = '_blank'
+        setTimeout(function () { click(a) })
+      }
+    } else {
+      navigator.msSaveOrOpenBlob(bom(blob, opts), name)
+    }
+  }
+
+  // Fallback to using FileReader and a popup
+  : function saveAs (blob, name, opts, popup) {
+    // Open a popup immediately do go around popup blocker
+    // Mostly only available on user interaction and the fileReader is async so...
+    popup = popup || open('', '_blank')
+    if (popup) {
+      popup.document.title =
+      popup.document.body.innerText = 'downloading...'
+    }
+
+    if (typeof blob === 'string') return download(blob, name, opts)
+
+    var force = blob.type === 'application/octet-stream'
+    var isSafari = /constructor/i.test(_global.HTMLElement) || _global.safari
+    var isChromeIOS = /CriOS\/[\d]+/.test(navigator.userAgent)
+
+    if ((isChromeIOS || (force && isSafari) || isMacOSWebView) && typeof FileReader !== 'undefined') {
+      // Safari doesn't allow downloading of blob URLs
+      var reader = new FileReader()
+      reader.onloadend = function () {
+        var url = reader.result
+        url = isChromeIOS ? url : url.replace(/^data:[^;]*;/, 'data:attachment/file;')
+        if (popup) popup.location.href = url
+        else location = url
+        popup = null // reverse-tabnabbing #460
+      }
+      reader.readAsDataURL(blob)
+    } else {
+      var URL = _global.URL || _global.webkitURL
+      var url = URL.createObjectURL(blob)
+      if (popup) popup.location = url
+      else location.href = url
+      popup = null // reverse-tabnabbing #460
+      setTimeout(function () { URL.revokeObjectURL(url) }, 4E4) // 40s
+    }
+  }
+)
+
+_global.saveAs = saveAs.saveAs = saveAs
+
+if (typeof module !== 'undefined') {
+  module.exports = saveAs;
+}
+
+_global.airportsData = null;
+
+// event after select file
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('#inputfile input').forEach(function(el) {
+        el.onchange = function(event) {
+					var input = event.target;
+					var reader = new FileReader();
+					reader.onload = function(e){
+						processtxt(e.target.result);
+						document.querySelector('#msg').value = "waiting for [lat,lng] input";
+					};
+					reader.readAsText(input.files[0]);
+        };
+    });
+});
+_global.markers = [];
+var runwaybox;
+const triangleCoords = [{lat:1,lng:1},{lat:1.000002,lng:1},{lat:1.000002,lng:1.000002},{lat:1,lng:1.000002},];
+runwaybox = new google.maps.Polygon({paths: triangleCoords,strokeColor: "#FF0000",strokeOpacity: 0.5,strokeWeight: 2,fillColor: "#456536",fillOpacity: 0.35,});
+document.addEventListener('DOMContentLoaded', function() {
+	document.querySelectorAll('#airportname input').forEach(function(el) {
+		el.onchange = function(event) {
+			//marker.setMap(null)
+			if(typeof _global.runwayDB == "undefined"){alert("load airport database first");return 0;}
+			var ttemp = this.value.replace(/[^\d.-\[\],]/g, '')
+			this.value = ttemp;
+			if(/^\[[+-]?([0-9]*[.])?[0-9]+,[+-]?([0-9]*[.])?[0-9]+\]$/.test(this.value)){
+				document.querySelector('#msg').value = this.value;
+				var result = getFromBetween.get(this.value,"[","]");
+				var latlng = {lat:result[0].split(',')[0],lng:result[0].split(',')[1]};
+				//console.log(latlng)
+				var foundairport =0;
+				var latlngPoint = new google.maps.LatLng(result[0].split(',')[0],result[0].split(',')[1]);
+				runwayDB.every((item)=>{
+					markers.forEach((e)=>{
+						e.setMap(null);
+					})
+					markers = [];
+					runwaybox.setMap(null);
+					runwaybox = new google.maps.Polygon({paths: item.bbox,strokeColor: "#FF0000",strokeOpacity: 0.5,strokeWeight: 2,fillColor: "#456536",fillOpacity: 0.35,});
+					var inside = google.maps.geometry.poly.containsLocation(latlngPoint,runwaybox)
+					if(inside){
+						//foundairport = item;
+						runwaybox.setMap(map);
+						const bounds = new google.maps.LatLngBounds();
+						item.bbox.forEach((place) => {
+								bounds.extend(new google.maps.LatLng(
+										place.lat,
+										place.lng,
+								));
+						});
+						map.fitBounds(bounds);
+						var marker = new google.maps.Marker({
+							position: latlngPoint,
+							map,
+						});
+						markers.push(marker);
+						document.querySelector('#msg').value = "FOUND ON : "+item.airport+"   RWY: "+item.runway;
+						return false;
+					}
+					var marker = new google.maps.Marker({
+						position: latlngPoint,
+						map,
+					});
+					markers.push(marker);
+					const bounds = new google.maps.LatLngBounds();
+					bounds.extend(new google.maps.LatLng(result[0].split(',')[0],result[0].split(',')[1]));
+					map.fitBounds(bounds);
+					document.querySelector('#msg').value = "lat,lng NOT FOUND on any RWY";
+					return true;
+				})
+			}else{
+				document.querySelector('#msg').value = "INVALID [lat,lng] format";
+			}
+		};
+	});
+})
+
+function processtxt(datas){
+	//console.log(datas)
+	_global.runwayDB = [];
+	d3.tsvParse(datas).forEach((item)=>{
+		var result = getFromBetween.get(item.bbox,"{","}");
+		var bbox = []
+		result.forEach((item)=>{
+			let lat = item.split(',')[0].split(':')[1];
+			let lng = item.split(',')[1].split(':')[1];
+			let skeleton = {lat:+lat,lng:+lng}
+			bbox.push(skeleton);
+		})
+		item.bbox = bbox;
+		runwayDB.push(item);
+	});
+}
+
+
+
+var getFromBetween = {
+    results:[],
+    string:"",
+    getFromBetween:function (sub1,sub2) {
+        if(this.string.indexOf(sub1) < 0 || this.string.indexOf(sub2) < 0) return false;
+        var SP = this.string.indexOf(sub1)+sub1.length;
+        var string1 = this.string.substr(0,SP);
+        var string2 = this.string.substr(SP);
+        var TP = string1.length + string2.indexOf(sub2);
+        return this.string.substring(SP,TP);
+    },
+    removeFromBetween:function (sub1,sub2) {
+        if(this.string.indexOf(sub1) < 0 || this.string.indexOf(sub2) < 0) return false;
+        var removal = sub1+this.getFromBetween(sub1,sub2)+sub2;
+        this.string = this.string.replace(removal,"");
+    },
+    getAllResults:function (sub1,sub2) {
+        // first check to see if we do have both substrings
+        if(this.string.indexOf(sub1) < 0 || this.string.indexOf(sub2) < 0) return;
+
+        // find one result
+        var result = this.getFromBetween(sub1,sub2);
+        // push it to the results array
+        this.results.push(result);
+        // remove the most recently found one from the string
+        this.removeFromBetween(sub1,sub2);
+
+        // if there's more substrings
+        if(this.string.indexOf(sub1) > -1 && this.string.indexOf(sub2) > -1) {
+            this.getAllResults(sub1,sub2);
+        }
+        else return;
+    },
+    get:function (string,sub1,sub2) {
+        this.results = [];
+        this.string = string;
+        this.getAllResults(sub1,sub2);
+        return this.results;
+    }
+};
+
+
+</script>
+
+
+</body>
+</html>
