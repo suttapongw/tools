@@ -1,0 +1,370 @@
+<!--
+1st install followin add-on to solve CORS
+https://chrome.google.com/webstore/detail/moesif-origin-cors-change/digfbfaphojjndkpccljibejjbppifbc/related?hl=en-US
+
+get all airport in-use
+line 270 for ICAO code input (currently 91)
+"EBBR","EDDF","EDDK","EDDM","EGLL","EKCH","ENGM","EPWA","ESSA","KSBD","LEJR","LFPG","LIMC","LIRF","LOWW","LROP","LSZH","NZAA","OEJN","OEMA","OIIE","OMDB","OOMS","OPIS","OPKC","OPLA","RCTP","RJAA","RJBB","RJCC","RJFF","RJGG","RJNK","RJOA","RJSK","RJSN","RJSS","RJTT","RKPK","RKSI","ROAH","RPLC","RPLL","UUDD","VAAH","VABB","VCBI","VDPP","VEBN","VECC","VEGY","VGHS","VHHH","VIDP","VLLB","VLVT","VNKT","VOBL","VOHS","VOMM","VTBD","VTBS","VTBU","VTCC","VTSC","VTSG","VTSP","VTSS","VVNB","VVTS","VYYY","WAAA","WADD","WARR","WIII","WMKK","WMKP","WSSS","YBBN","YMML","YPAD","YPPH","YSSY","ZBAA","ZGGG","ZGHA","ZPPP","ZSAM","ZSPD","ZUCK","ZUUU"
+https://gis.icao.int/ArcGIS/rest/services/AOP/MapServer/4/query?text=&geometry=&geometryType=esriGeometryPoint&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&objectIds=&where=ICAO%3D%27VTBS%27+OR+ICAO%3D%27VTCC%27+&time=&returnCountOnly=false&returnIdsOnly=false&returnGeometry=true&maxAllowableOffset=&outSR=&outFields=ICAO%2CNAME%2CSEC_ICAO%2CSEC_NAME%2CARPT_IDENT%2CWGS_DLAT%2CWGS_DLONG&f=html
+
+get runway details
+https://gis.icao.int/ArcGIS/rest/services/AOP/MapServer/12/query?text=&geometry=&geometryType=esriGeometryPoint&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&objectIds=&where=ARPT_IDENT%3D%27TH00016%27+OR+ARPT_IDENT%3D%27TH64285%27+&time=&returnCountOnly=false&returnIdsOnly=false&returnGeometry=false&maxAllowableOffset=&outSR=&outFields=ARPT_IDENT%2C+LENGTH%2C+RWY_WIDTH%2C+LOW_IDENT%2C+LEWGS_DLAT%2C+LEWGS_DLON%2C+LELAND_DIS%2C+LE_TORA%2C+LE_TODA%2C+LE_ASDA%2C+HIGH_IDENT%2C+HEWGS_DLAT%2C+HEWGS_DLON%2C+HELAND_DIS%2C+HE_TORA%2C+HE_TODA%2C+HE_ASDA&f=html
+
+-->
+<html>
+  <head>
+  </head>
+<body>
+
+
+<script src="https://d3js.org/d3.v6.min.js"></script>
+<script type="module">
+import LatLon, { Dms } from 'https://cdn.jsdelivr.net/npm/geodesy@2/latlon-spherical.js';
+let degFmt = 'd';
+
+var _global = typeof window === 'object' && window.window === window
+  ? window : typeof self === 'object' && self.self === self
+  ? self : typeof global === 'object' && global.global === global
+  ? global
+  : this
+function bom (blob, opts) {
+  if (typeof opts === 'undefined') opts = { autoBom: false }
+  else if (typeof opts !== 'object') {
+    console.warn('Deprecated: Expected third argument to be a object')
+    opts = { autoBom: !opts }
+  }
+
+  // prepend BOM for UTF-8 XML and text/* types (including HTML)
+  // note: your browser will automatically convert UTF-16 U+FEFF to EF BB BF
+  if (opts.autoBom && /^\s*(?:text\/\S*|application\/xml|\S*\/\S*\+xml)\s*;.*charset\s*=\s*utf-8/i.test(blob.type)) {
+    return new Blob([String.fromCharCode(0xFEFF), blob], { type: blob.type })
+  }
+  return blob
+}
+
+function download (url, name, opts) {
+  var xhr = new XMLHttpRequest()
+  xhr.open('GET', url)
+  xhr.responseType = 'blob'
+  xhr.onload = function () {
+    saveAs(xhr.response, name, opts)
+  }
+  xhr.onerror = function () {
+    console.error('could not download file')
+  }
+  xhr.send()
+}
+
+function corsEnabled (url) {
+  var xhr = new XMLHttpRequest()
+  // use sync to avoid popup blocker
+  xhr.open('HEAD', url, false)
+  try {
+    xhr.send()
+  } catch (e) {}
+  return xhr.status >= 200 && xhr.status <= 299
+}
+
+// `a.click()` doesn't work for all browsers (#465)
+function click (node) {
+  try {
+    node.dispatchEvent(new MouseEvent('click'))
+  } catch (e) {
+    var evt = document.createEvent('MouseEvents')
+    evt.initMouseEvent('click', true, true, window, 0, 0, 0, 80,
+                          20, false, false, false, false, 0, null)
+    node.dispatchEvent(evt)
+  }
+}
+
+// Detect WebView inside a native macOS app by ruling out all browsers
+// We just need to check for 'Safari' because all other browsers (besides Firefox) include that too
+// https://www.whatismybrowser.com/guides/the-latest-user-agent/macos
+var isMacOSWebView = _global.navigator && /Macintosh/.test(navigator.userAgent) && /AppleWebKit/.test(navigator.userAgent) && !/Safari/.test(navigator.userAgent)
+
+var saveAs = _global.saveAs || (
+  // probably in some web worker
+  (typeof window !== 'object' || window !== _global)
+    ? function saveAs () { /* noop */ }
+
+  // Use download attribute first if possible (#193 Lumia mobile) unless this is a macOS WebView
+  : ('download' in HTMLAnchorElement.prototype && !isMacOSWebView)
+  ? function saveAs (blob, name, opts) {
+    var URL = _global.URL || _global.webkitURL
+    var a = document.createElement('a')
+    name = name || blob.name || 'download'
+
+    a.download = name
+    a.rel = 'noopener' // tabnabbing
+
+    if (typeof blob === 'string') {
+      // Support regular links
+      a.href = blob
+      if (a.origin !== location.origin) {
+        corsEnabled(a.href)
+          ? download(blob, name, opts)
+          : click(a, a.target = '_blank')
+      } else {
+        click(a)
+      }
+    } else {
+      // Support blobs
+      a.href = URL.createObjectURL(blob)
+      setTimeout(function () { URL.revokeObjectURL(a.href) }, 4E4) // 40s
+      setTimeout(function () { click(a) }, 0)
+    }
+  }
+
+  // Use msSaveOrOpenBlob as a second approach
+  : 'msSaveOrOpenBlob' in navigator
+  ? function saveAs (blob, name, opts) {
+    name = name || blob.name || 'download'
+
+    if (typeof blob === 'string') {
+      if (corsEnabled(blob)) {
+        download(blob, name, opts)
+      } else {
+        var a = document.createElement('a')
+        a.href = blob
+        a.target = '_blank'
+        setTimeout(function () { click(a) })
+      }
+    } else {
+      navigator.msSaveOrOpenBlob(bom(blob, opts), name)
+    }
+  }
+
+  // Fallback to using FileReader and a popup
+  : function saveAs (blob, name, opts, popup) {
+    // Open a popup immediately do go around popup blocker
+    // Mostly only available on user interaction and the fileReader is async so...
+    popup = popup || open('', '_blank')
+    if (popup) {
+      popup.document.title =
+      popup.document.body.innerText = 'downloading...'
+    }
+
+    if (typeof blob === 'string') return download(blob, name, opts)
+
+    var force = blob.type === 'application/octet-stream'
+    var isSafari = /constructor/i.test(_global.HTMLElement) || _global.safari
+    var isChromeIOS = /CriOS\/[\d]+/.test(navigator.userAgent)
+
+    if ((isChromeIOS || (force && isSafari) || isMacOSWebView) && typeof FileReader !== 'undefined') {
+      // Safari doesn't allow downloading of blob URLs
+      var reader = new FileReader()
+      reader.onloadend = function () {
+        var url = reader.result
+        url = isChromeIOS ? url : url.replace(/^data:[^;]*;/, 'data:attachment/file;')
+        if (popup) popup.location.href = url
+        else location = url
+        popup = null // reverse-tabnabbing #460
+      }
+      reader.readAsDataURL(blob)
+    } else {
+      var URL = _global.URL || _global.webkitURL
+      var url = URL.createObjectURL(blob)
+      if (popup) popup.location = url
+      else location.href = url
+      popup = null // reverse-tabnabbing #460
+      setTimeout(function () { URL.revokeObjectURL(url) }, 4E4) // 40s
+    }
+  }
+)
+
+_global.saveAs = saveAs.saveAs = saveAs
+
+if (typeof module !== 'undefined') {
+  module.exports = saveAs;
+}
+
+
+document.addEventListener('DOMContentLoaded', function() {
+	console.log("VIEW SOURCE TO SOLVE : from origin 'null' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.")
+	_global.airports = [];
+	_global.airportsID = []; // use for runway query
+	getAirports()
+  .then((data) => {
+    data.features.map((item)=>{
+    	let skel = {};
+    	//console.log(item)
+    	skel.id = item.attributes.ARPT_IDENT
+    	skel.icao = item.attributes.ICAO
+    	skel.name = item.attributes.NAME
+    	airportsID.push(skel.id);
+    	skel.lat = item.attributes.WGS_DLAT
+    	skel.lng = item.attributes.WGS_DLONG
+    	airports.push(skel);
+    })
+  })
+  .then(()=>{
+  	_global.runwaysDetails = [];
+  	getRunways(airportsID)
+  	.then(datas =>{
+			datas.features.map((item)=>{
+				let skel1 = {},skel2 = {};
+				//console.log(item)
+				let airportf = airports.find(obj => {
+					return obj.id === item.attributes.ARPT_IDENT
+				})
+				skel1.airporticao = airportf.icao
+				skel1.airportname = airportf.name
+				skel1.runwayid = item.attributes.HIGH_IDENT
+				skel1.takeofflat = item.attributes.HEWGS_DLAT
+				skel1.takeofflng = item.attributes.HEWGS_DLON
+				skel1.takeofflat2 = item.attributes.LEWGS_DLAT
+				skel1.takeofflng2 = item.attributes.LEWGS_DLON
+				skel1.width = item.attributes.RWY_WIDTH
+				skel1.lda = item.attributes.HELAND_DIS
+				skel1.tora = item.attributes.HE_TORA
+				skel1.airportlat = airportf.lat
+				skel1.airportlng = airportf.lng
+				skel1.bbox = item.geometry.rings[0]
+				let p11 = new LatLon(skel1.takeofflat, skel1.takeofflng);
+				let p12 = new LatLon(skel1.takeofflat2, skel1.takeofflng2);
+				let pMid = p11.midpointTo(p12);
+				let brng1toMid = p11.initialBearingTo(pMid);
+				let brngMidto1 = pMid.initialBearingTo(p11);
+				let p1p1 = p11.destinationPoint(skel1.width/(2*3.2808399), brng1toMid+90);
+				let p1p2 = p11.destinationPoint(skel1.width/(2*3.2808399), brng1toMid-90);
+				let p1p3 = pMid.destinationPoint(skel1.width/(2*3.2808399), brngMidto1+90);
+				let p1p4 = pMid.destinationPoint(skel1.width/(2*3.2808399), brngMidto1-90);
+				let runway1box = "{lat:"+p1p1.lat+",lng:"+p1p1.lng+"},"+
+								"{lat:"+p1p2.lat+",lng:"+p1p2.lng+"},"+
+								"{lat:"+p1p3.lat+",lng:"+p1p3.lng+"},"+
+								"{lat:"+p1p4.lat+",lng:"+p1p4.lng+"},";
+				skel1.takeoffbbox = runway1box
+				skel2.airporticao = airportf.icao
+				skel2.airportname = airportf.name
+				skel2.runwayid = item.attributes.LOW_IDENT
+				skel2.takeofflat = item.attributes.LEWGS_DLAT
+				skel2.takeofflng = item.attributes.LEWGS_DLON
+				skel2.takeofflat2 = item.attributes.HEWGS_DLAT
+				skel2.takeofflng2 = item.attributes.HEWGS_DLON
+				skel2.width = item.attributes.RWY_WIDTH
+				skel2.lda = item.attributes.LELAND_DIS
+				skel2.tora = item.attributes.LE_TORA
+				skel2.airportlat = airportf.lat
+				skel2.airportlng = airportf.lng
+				skel2.bbox = item.geometry.rings[0]
+						p11 = new LatLon(skel2.takeofflat, skel2.takeofflng);
+						p12 = new LatLon(skel2.takeofflat2, skel2.takeofflng2);
+						pMid = p11.midpointTo(p12);
+						brng1toMid = p11.initialBearingTo(pMid);
+						brngMidto1 = pMid.initialBearingTo(p11);
+						p1p1 = p11.destinationPoint(skel1.width/(2*3.2808399), brng1toMid+90);
+						p1p2 = p11.destinationPoint(skel1.width/(2*3.2808399), brng1toMid-90);
+						p1p3 = pMid.destinationPoint(skel1.width/(2*3.2808399), brngMidto1+90);
+						p1p4 = pMid.destinationPoint(skel1.width/(2*3.2808399), brngMidto1-90);
+						runway1box = "{lat:"+p1p1.lat+",lng:"+p1p1.lng+"},"+
+								"{lat:"+p1p2.lat+",lng:"+p1p2.lng+"},"+
+								"{lat:"+p1p3.lat+",lng:"+p1p3.lng+"},"+
+								"{lat:"+p1p4.lat+",lng:"+p1p4.lng+"},";
+				skel2.takeoffbbox = runway1box
+				runwaysDetails.push(skel1)
+				runwaysDetails.push(skel2)
+			})
+  	})
+		.then(()=>{
+			//let newrunwaysdetail = runwaysDetails.sort((a, b) => a.airporticao.localeCompare(b.airporticao) || b.runwayid + a.runwayid);
+			//runwaysDetails.sort(fieldSorter(['airporticao', '-runwayid']));
+			runwaysDetails.sort(fieldSorter(['airporticao', 'runwayid']));
+			//console.log("runwaysDetails",runwaysDetails)
+			var content = "ICAO\tRWY\tRWYTOBOX\tlat1\tlng1\tlat2\tlng2\r\n";
+			runwaysDetails.forEach((item)=>{
+				content += item.airporticao+"\t"+item.runwayid+"\t"+item.takeoffbbox+"\t"
+										+item.takeofflat+"\t"+item.takeofflng+"\t"+item.takeofflat2+"\t"+item.takeofflng2+"\r\n";
+			})
+			
+			
+			var filename = "airport-takeoff-runways-box.csv";
+			var blob = new Blob([content], {
+			 type: "text/plain;charset=utf-8"
+			});
+	
+			//file download
+			//saveAs(blob, filename);
+
+			
+		})  
+  })
+  /**/
+});
+
+const fieldSorter = (fields) => (a, b) => fields.map(o => {
+    let dir = 1;
+    if (o[0] === '-') { dir = -1; o=o.substring(1); }
+    return a[o] > b[o] ? dir : a[o] < b[o] ? -(dir) : 0;
+}).reduce((p, n) => p ? p : n, 0);
+
+async function getRunways(ids) {
+	console.log("PROCESS : get runways")
+	//https://gis.icao.int/ArcGIS/rest/services/AOP/MapServer/12/query?text=&geometry=&geometryType=esriGeometryPoint&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&objectIds=&where=ARPT_IDENT%3D%27TH00016%27+OR+ARPT_IDENT%3D%27TH64285%27+&time=&returnCountOnly=false&returnIdsOnly=false&returnGeometry=false&maxAllowableOffset=&outSR=&outFields=ARPT_IDENT%2C+LENGTH%2C+RWY_WIDTH%2C+LOW_IDENT%2C+LEWGS_DLAT%2C+LEWGS_DLON%2C+LELAND_DIS%2C+LE_TORA%2C+LE_TODA%2C+LE_ASDA%2C+HIGH_IDENT%2C+HEWGS_DLAT%2C+HEWGS_DLON%2C+HELAND_DIS%2C+HE_TORA%2C+HE_TODA%2C+HE_ASDA&f=html
+	let url = 'https://gis.icao.int/ArcGIS/rest/services/AOP/MapServer/12/query';
+	let wheretext = '';
+	ids.forEach((item)=>{
+		if(wheretext === ''){
+			wheretext += "ARPT_IDENT='"+item+"'"
+		}else{
+			wheretext += " OR ARPT_IDENT='"+item+"'"
+		}
+	})
+	//console.log(wheretext);
+  let data = {
+		geometryType:'esriGeometryPoint',
+		spatialRel:'esriSpatialRelIntersects',
+		where: wheretext, // all airports
+		//where:"ARPT_IDENT='TH00016' OR ARPT_IDENT='IN91649' OR ARPT_IDENT='BE93570'",
+		returnCountOnly:'false',
+		returnIdsOnly:'false',
+		returnGeometry:'true',
+		outFields:'ARPT_IDENT, LENGTH, RWY_WIDTH, LOW_IDENT, LEWGS_DLAT, LEWGS_DLON, LELAND_DIS, LE_TORA, LE_TODA, LE_ASDA, HIGH_IDENT, HEWGS_DLAT, HEWGS_DLON, HELAND_DIS, HE_TORA, HE_TODA, HE_ASDA',
+		f:'pjson',
+  }
+	const res2 = await fetch(url, {
+		method: 'POST',
+		body: new URLSearchParams(data),
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+	})
+  return res2.json(); // parses JSON response into native JavaScript objects
+}
+
+function handleErrors(response) {
+    if (!response.ok) {
+        throw Error(response.statusText);
+    }
+    return response;
+}
+
+async function getAirports() {
+	console.log("PROCESS : get airports")
+	let url = 'https://gis.icao.int/ArcGIS/rest/services/AOP/MapServer/4/query';
+  let data = {
+		geometryType:'esriGeometryPoint',
+		spatialRel:'esriSpatialRelIntersects',
+		where:"ICAO='EBBR' OR ICAO='EDDF' OR ICAO='EDDK' OR ICAO='EDDM' OR ICAO='EGLL' OR ICAO='EKCH' OR ICAO='ENGM' OR ICAO='EPWA' OR ICAO='ESSA' OR ICAO='KSBD' OR ICAO='LEJR' OR ICAO='LFPG' OR ICAO='LIMC' OR ICAO='LIRF' OR ICAO='LOWW' OR ICAO='LROP' OR ICAO='LSZH' OR ICAO='NZAA' OR ICAO='OEJN' OR ICAO='OEMA' OR ICAO='OIIE' OR ICAO='OMDB' OR ICAO='OOMS' OR ICAO='OPIS' OR ICAO='OPKC' OR ICAO='OPLA' OR ICAO='RCTP' OR ICAO='RJAA' OR ICAO='RJBB' OR ICAO='RJCC' OR ICAO='RJFF' OR ICAO='RJGG' OR ICAO='RJNK' OR ICAO='RJOA' OR ICAO='RJSK' OR ICAO='RJSN' OR ICAO='RJSS' OR ICAO='RJTT' OR ICAO='RKPK' OR ICAO='RKSI' OR ICAO='ROAH' OR ICAO='RPLC' OR ICAO='RPLL' OR ICAO='UUDD' OR ICAO='VAAH' OR ICAO='VABB' OR ICAO='VCBI' OR ICAO='VDPP' OR ICAO='VEBN' OR ICAO='VECC' OR ICAO='VEGY' OR ICAO='VGHS' OR ICAO='VHHH' OR ICAO='VIDP' OR ICAO='VLLB' OR ICAO='VLVT' OR ICAO='VNKT' OR ICAO='VOBL' OR ICAO='VOHS' OR ICAO='VOMM' OR ICAO='VTBD' OR ICAO='VTBS' OR ICAO='VTBU' OR ICAO='VTCC' OR ICAO='VTSC' OR ICAO='VTSG' OR ICAO='VTSP' OR ICAO='VTSS' OR ICAO='VVNB' OR ICAO='VVTS' OR ICAO='VYYY' OR ICAO='WAAA' OR ICAO='WADD' OR ICAO='WARR' OR ICAO='WIII' OR ICAO='WMKK' OR ICAO='WMKP' OR ICAO='WSSS' OR ICAO='YBBN' OR ICAO='YMML' OR ICAO='YPAD' OR ICAO='YPPH' OR ICAO='YSSY' OR ICAO='ZBAA' OR ICAO='ZGGG' OR ICAO='ZGHA' OR ICAO='ZPPP' OR ICAO='ZSAM' OR ICAO='ZSPD' OR ICAO='ZUCK' OR ICAO='ZUUU'",
+		//where:"ICAO='EBBR' OR ICAO='EDDF' OR ICAO='VTBS'",
+		returnCountOnly:'false',
+		returnIdsOnly:'false',
+		returnGeometry:'false',
+		outFields:'ICAO,NAME,SEC_ICAO,SEC_NAME,ARPT_IDENT,WGS_DLAT,WGS_DLONG',
+		f:'pjson',
+  }
+	const res2 = await fetch(url, {
+		method: 'POST',
+		body: new URLSearchParams(data),
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+	})
+  return res2.json(); // parses JSON response into native JavaScript objects
+}
+
+
+</script>
+
+
+</body>
+</html>
