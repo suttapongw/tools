@@ -1,0 +1,165 @@
+<!--
+1st install followin add-on to solve CORS
+https://chrome.google.com/webstore/detail/moesif-origin-cors-change/digfbfaphojjndkpccljibejjbppifbc/related?hl=en-US
+
+get all airport in-use
+line 270 for ICAO code input (currently 91)
+"EBBR","EDDF","EDDK","EDDM","EGLL","EKCH","ENGM","EPWA","ESSA","KSBD","LEJR","LFPG","LIMC","LIRF","LOWW","LROP","LSZH","NZAA","OEJN","OEMA","OIIE","OMDB","OOMS","OPIS","OPKC","OPLA","RCTP","RJAA","RJBB","RJCC","RJFF","RJGG","RJNK","RJOA","RJSK","RJSN","RJSS","RJTT","RKPK","RKSI","ROAH","RPLC","RPLL","UUDD","VAAH","VABB","VCBI","VDPP","VEBN","VECC","VEGY","VGHS","VHHH","VIDP","VLLB","VLVT","VNKT","VOBL","VOHS","VOMM","VTBD","VTBS","VTBU","VTCC","VTSC","VTSG","VTSP","VTSS","VVNB","VVTS","VYYY","WAAA","WADD","WARR","WIII","WMKK","WMKP","WSSS","YBBN","YMML","YPAD","YPPH","YSSY","ZBAA","ZGGG","ZGHA","ZPPP","ZSAM","ZSPD","ZUCK","ZUUU"
+https://gis.icao.int/ArcGIS/rest/services/AOP/MapServer/4/query?text=&geometry=&geometryType=esriGeometryPoint&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&objectIds=&where=ICAO%3D%27VTBS%27+OR+ICAO%3D%27VTCC%27+&time=&returnCountOnly=false&returnIdsOnly=false&returnGeometry=true&maxAllowableOffset=&outSR=&outFields=ICAO%2CNAME%2CSEC_ICAO%2CSEC_NAME%2CARPT_IDENT%2CWGS_DLAT%2CWGS_DLONG&f=html
+
+get runway details
+https://gis.icao.int/ArcGIS/rest/services/AOP/MapServer/12/query?text=&geometry=&geometryType=esriGeometryPoint&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&objectIds=&where=ARPT_IDENT%3D%27TH00016%27+OR+ARPT_IDENT%3D%27TH64285%27+&time=&returnCountOnly=false&returnIdsOnly=false&returnGeometry=false&maxAllowableOffset=&outSR=&outFields=ARPT_IDENT%2C+LENGTH%2C+RWY_WIDTH%2C+LOW_IDENT%2C+LEWGS_DLAT%2C+LEWGS_DLON%2C+LELAND_DIS%2C+LE_TORA%2C+LE_TODA%2C+LE_ASDA%2C+HIGH_IDENT%2C+HEWGS_DLAT%2C+HEWGS_DLON%2C+HELAND_DIS%2C+HE_TORA%2C+HE_TODA%2C+HE_ASDA&f=html
+
+-->
+<html>
+  <head>
+  </head>
+<body>
+
+
+<script src="https://d3js.org/d3.v6.min.js"></script>
+<script type="module">
+var _global = typeof window === 'object' && window.window === window
+  ? window : typeof self === 'object' && self.self === self
+  ? self : typeof global === 'object' && global.global === global
+  ? global
+  : this
+
+document.addEventListener('DOMContentLoaded', function() {
+	console.log("VIEW SOURCE TO SOLVE : from origin 'null' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.")
+	_global.airports = [];
+	_global.airportsID = []; // use for runway query
+	getAirports()
+  .then((data) => {
+    data.features.map((item)=>{
+    	let skel = {};
+    	//console.log(item)
+    	skel.id = item.attributes.ARPT_IDENT
+    	skel.icao = item.attributes.ICAO
+    	skel.name = item.attributes.NAME
+    	airportsID.push(skel.id);
+    	skel.lat = item.attributes.WGS_DLAT
+    	skel.lng = item.attributes.WGS_DLONG
+    	airports.push(skel);
+    })
+  })
+  .then(()=>{
+  	_global.runwaysDetails = [];
+  	getRunways(airportsID)
+  	.then(datas =>{
+			datas.features.map((item)=>{
+				let skel1 = {},skel2 = {};
+				//console.log(item)
+				let airportf = airports.find(obj => {
+					return obj.id === item.attributes.ARPT_IDENT
+				})
+				skel1.airportid = item.attributes.ARPT_IDENT
+				skel1.runwayid = item.attributes.HIGH_IDENT
+				skel1.takeofflat = item.attributes.HEWGS_DLAT
+				skel1.takeofflng = item.attributes.HEWGS_DLON
+				skel1.landinglat = 0
+				skel1.landinglng = 0
+				skel1.width = item.attributes.RWY_WIDTH
+				skel1.lda = item.attributes.HELAND_DIS
+				skel1.tora = item.attributes.HE_TORA
+				skel1.airportname = airportf.name
+				skel1.airporticao = airportf.icao
+				skel1.airportlat = airportf.lat
+				skel1.airportlng = airportf.lng
+				skel1.bbox = item.geometry.rings[0]
+
+				skel2.airportid = item.attributes.ARPT_IDENT
+				skel2.runwayid = item.attributes.LOW_IDENT
+				skel2.takeofflat = item.attributes.LEWGS_DLAT
+				skel2.takeofflng = item.attributes.LEWGS_DLON
+				skel2.landinglat = 0
+				skel2.landinglng = 0
+				skel2.width = item.attributes.RWY_WIDTH
+				skel2.lda = item.attributes.LELAND_DIS
+				skel2.tora = item.attributes.LE_TORA
+				skel2.airportname = airportf.name
+				skel2.airporticao = airportf.icao
+				skel2.airportlat = airportf.lat
+				skel2.airportlng = airportf.lng
+				skel2.bbox = item.geometry.rings[0]
+				runwaysDetails.push(skel1)
+				runwaysDetails.push(skel2)
+			})
+  	})
+		.then(()=>{
+			console.log("runwaysDetails",runwaysDetails)
+		})  
+  })
+  /**/
+});
+async function getRunways(ids) {
+	console.log("PROCESS : get runways")
+	//https://gis.icao.int/ArcGIS/rest/services/AOP/MapServer/12/query?text=&geometry=&geometryType=esriGeometryPoint&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&objectIds=&where=ARPT_IDENT%3D%27TH00016%27+OR+ARPT_IDENT%3D%27TH64285%27+&time=&returnCountOnly=false&returnIdsOnly=false&returnGeometry=false&maxAllowableOffset=&outSR=&outFields=ARPT_IDENT%2C+LENGTH%2C+RWY_WIDTH%2C+LOW_IDENT%2C+LEWGS_DLAT%2C+LEWGS_DLON%2C+LELAND_DIS%2C+LE_TORA%2C+LE_TODA%2C+LE_ASDA%2C+HIGH_IDENT%2C+HEWGS_DLAT%2C+HEWGS_DLON%2C+HELAND_DIS%2C+HE_TORA%2C+HE_TODA%2C+HE_ASDA&f=html
+	let url = 'https://gis.icao.int/ArcGIS/rest/services/AOP/MapServer/12/query';
+	let wheretext = '';
+	ids.forEach((item)=>{
+		if(wheretext === ''){
+			wheretext += "ARPT_IDENT='"+item+"'"
+		}else{
+			wheretext += " OR ARPT_IDENT='"+item+"'"
+		}
+	})
+	//console.log(wheretext);
+  let data = {
+		geometryType:'esriGeometryPoint',
+		spatialRel:'esriSpatialRelIntersects',
+		where:wheretext,
+		//where:"ARPT_IDENT='TH00016' OR ARPT_IDENT='TH64285' ",
+		returnCountOnly:'false',
+		returnIdsOnly:'false',
+		returnGeometry:'true',
+		outFields:'ARPT_IDENT, LENGTH, RWY_WIDTH, LOW_IDENT, LEWGS_DLAT, LEWGS_DLON, LELAND_DIS, LE_TORA, LE_TODA, LE_ASDA, HIGH_IDENT, HEWGS_DLAT, HEWGS_DLON, HELAND_DIS, HE_TORA, HE_TODA, HE_ASDA',
+		f:'pjson',
+  }
+	const res2 = await fetch(url, {
+		method: 'POST',
+		body: new URLSearchParams(data),
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+	})
+  return res2.json(); // parses JSON response into native JavaScript objects
+}
+
+function handleErrors(response) {
+    if (!response.ok) {
+        throw Error(response.statusText);
+    }
+    return response;
+}
+
+async function getAirports() {
+	console.log("PROCESS : get airports")
+	let url = 'https://gis.icao.int/ArcGIS/rest/services/AOP/MapServer/4/query';
+  let data = {
+		geometryType:'esriGeometryPoint',
+		spatialRel:'esriSpatialRelIntersects',
+		where:"ICAO='EBBR' OR ICAO='EDDF' OR ICAO='EDDK' OR ICAO='EDDM' OR ICAO='EGLL' OR ICAO='EKCH' OR ICAO='ENGM' OR ICAO='EPWA' OR ICAO='ESSA' OR ICAO='KSBD' OR ICAO='LEJR' OR ICAO='LFPG' OR ICAO='LIMC' OR ICAO='LIRF' OR ICAO='LOWW' OR ICAO='LROP' OR ICAO='LSZH' OR ICAO='NZAA' OR ICAO='OEJN' OR ICAO='OEMA' OR ICAO='OIIE' OR ICAO='OMDB' OR ICAO='OOMS' OR ICAO='OPIS' OR ICAO='OPKC' OR ICAO='OPLA' OR ICAO='RCTP' OR ICAO='RJAA' OR ICAO='RJBB' OR ICAO='RJCC' OR ICAO='RJFF' OR ICAO='RJGG' OR ICAO='RJNK' OR ICAO='RJOA' OR ICAO='RJSK' OR ICAO='RJSN' OR ICAO='RJSS' OR ICAO='RJTT' OR ICAO='RKPK' OR ICAO='RKSI' OR ICAO='ROAH' OR ICAO='RPLC' OR ICAO='RPLL' OR ICAO='UUDD' OR ICAO='VAAH' OR ICAO='VABB' OR ICAO='VCBI' OR ICAO='VDPP' OR ICAO='VEBN' OR ICAO='VECC' OR ICAO='VEGY' OR ICAO='VGHS' OR ICAO='VHHH' OR ICAO='VIDP' OR ICAO='VLLB' OR ICAO='VLVT' OR ICAO='VNKT' OR ICAO='VOBL' OR ICAO='VOHS' OR ICAO='VOMM' OR ICAO='VTBD' OR ICAO='VTBS' OR ICAO='VTBU' OR ICAO='VTCC' OR ICAO='VTSC' OR ICAO='VTSG' OR ICAO='VTSP' OR ICAO='VTSS' OR ICAO='VVNB' OR ICAO='VVTS' OR ICAO='VYYY' OR ICAO='WAAA' OR ICAO='WADD' OR ICAO='WARR' OR ICAO='WIII' OR ICAO='WMKK' OR ICAO='WMKP' OR ICAO='WSSS' OR ICAO='YBBN' OR ICAO='YMML' OR ICAO='YPAD' OR ICAO='YPPH' OR ICAO='YSSY' OR ICAO='ZBAA' OR ICAO='ZGGG' OR ICAO='ZGHA' OR ICAO='ZPPP' OR ICAO='ZSAM' OR ICAO='ZSPD' OR ICAO='ZUCK' OR ICAO='ZUUU'",
+		//where:"ICAO='EBBR' OR ICAO='EDDF' OR ICAO='VTBS'",
+		returnCountOnly:'false',
+		returnIdsOnly:'false',
+		returnGeometry:'false',
+		outFields:'ICAO,NAME,SEC_ICAO,SEC_NAME,ARPT_IDENT,WGS_DLAT,WGS_DLONG',
+		f:'pjson',
+  }
+	const res2 = await fetch(url, {
+		method: 'POST',
+		body: new URLSearchParams(data),
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+	})
+  return res2.json(); // parses JSON response into native JavaScript objects
+}
+
+
+</script>
+
+
+</body>
+</html>
